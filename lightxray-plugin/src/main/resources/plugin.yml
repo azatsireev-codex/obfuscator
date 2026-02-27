@@ -1,0 +1,13 @@
+name: LightXRay
+version: ${project.version}
+main: net.imprex.lightxray.LightXRayPlugin
+api-version: '1.16'
+authors: [Imprex]
+commands:
+  lightxray:
+    description: LightXRay admin command
+    usage: /<command> reload
+    permission: lightxray.admin
+permissions:
+  lightxray.admin:
+    default: op

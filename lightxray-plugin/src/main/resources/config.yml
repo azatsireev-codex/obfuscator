@@ -1,0 +1,19 @@
+enabled: true
+scanIntervalTicks: 20
+chunkRadius: 1
+minY: -64
+maxY: 64
+viewConeDegrees: 100
+maxReplacementsPerScan: 800
+maxRestoresPerScan: 400
+replacementMaterial: STONE
+hiddenMaterials:
+  - DIAMOND_ORE
+  - DEEPSLATE_DIAMOND_ORE
+  - EMERALD_ORE
+  - DEEPSLATE_EMERALD_ORE
+  - ANCIENT_DEBRIS
+  - GOLD_ORE
+  - DEEPSLATE_GOLD_ORE
+  - IRON_ORE
+  - DEEPSLATE_IRON_ORE

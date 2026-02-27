@@ -68,6 +68,7 @@
     <module>orebfuscator-compatibility</module>
     <module>orebfuscator-nms</module>
     <module>orebfuscator-plugin</module>
+    <module>lightxray-plugin</module>
   </modules>
 
   <profiles>
