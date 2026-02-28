@@ -1,11 +1,8 @@
 enabled: true
-scanIntervalTicks: 20
-chunkRadius: 1
 minY: -64
 maxY: 64
 viewConeDegrees: 100
-maxReplacementsPerScan: 800
-maxRestoresPerScan: 400
+maxReplacementsPerChunk: 384
 replacementMaterial: STONE
 hiddenMaterials:
   - DIAMOND_ORE

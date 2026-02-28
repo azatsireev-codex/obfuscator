@@ -3,6 +3,7 @@ version: ${project.version}
 main: net.imprex.lightxray.LightXRayPlugin
 api-version: '1.16'
 authors: [Imprex]
+softdepend: [ProtocolLib]
 commands:
   lightxray:
     description: LightXRay admin command
