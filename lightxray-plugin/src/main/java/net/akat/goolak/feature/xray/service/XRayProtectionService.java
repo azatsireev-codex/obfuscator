@@ -1,7 +1,5 @@
 package net.akat.goolak.feature.xray.service;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -45,48 +43,47 @@ public final class XRayProtectionService {
     int minY = Math.max(worldMinY, current.minY());
     int maxY = Math.min(worldMaxY, current.maxY());
 
-    int replaced = 0;
     int baseX = chunkX << 4;
     int baseZ = chunkZ << 4;
 
     Set<BlockPosition> playerMask = this.maskedByPlayer.computeIfAbsent(
         player.getUniqueId(), key -> ConcurrentHashMap.newKeySet());
-    List<BlockPosition> newMasked = new ArrayList<>();
 
-    for (int y = minY; y <= maxY && replaced < current.maxReplacementsPerChunk(); y++) {
-      for (int local = 0; local < 16 && replaced < current.maxReplacementsPerChunk(); local++) {
-        replaced += this.tryMask(player, world, baseX + local, y, baseZ, current, newMasked);
-        replaced += this.tryMask(player, world, baseX + local, y, baseZ + 15, current, newMasked);
-        if (local > 0 && local < 15) {
-          replaced += this.tryMask(player, world, baseX, y, baseZ + local, current, newMasked);
-          replaced += this.tryMask(player, world, baseX + 15, y, baseZ + local, current, newMasked);
+    for (int y = minY; y <= maxY; y++) {
+      for (int localZ = 0; localZ < 16; localZ++) {
+        for (int localX = 0; localX < 16; localX++) {
+          if (current.boundaryOnly() && localX > 0 && localX < 15 && localZ > 0 && localZ < 15) {
+            continue;
+          }
+
+          int x = baseX + localX;
+          int z = baseZ + localZ;
+
+          if (this.shouldMask(player, world, x, y, z, current)) {
+            player.sendBlockChange(new Location(world, x, y, z), current.replacementMaterial().createBlockData());
+            playerMask.add(new BlockPosition(x, y, z));
+          }
         }
       }
     }
-
-    playerMask.addAll(newMasked);
   }
 
-  private int tryMask(Player player, World world, int x, int y, int z,
-      XRayProtectionConfig current, List<BlockPosition> newMasked) {
-
+  private boolean shouldMask(Player player, World world, int x, int y, int z, XRayProtectionConfig current) {
     Block block = world.getBlockAt(x, y, z);
     Material material = block.getType();
     if (!current.hiddenMaterials().contains(material)) {
-      return 0;
+      return false;
     }
 
-    if (!isEnclosed(block)) {
-      return 0;
+    if (current.requireEnclosed() && !isEnclosed(block)) {
+      return false;
     }
 
-    if (isInsideViewCone(player, x + 0.5, y + 0.5, z + 0.5, current.viewConeDegrees())) {
-      return 0;
+    if (current.checkViewCone() && isInsideViewCone(player, x + 0.5, y + 0.5, z + 0.5, current.viewConeDegrees())) {
+      return false;
     }
 
-    player.sendBlockChange(new Location(world, x, y, z), current.replacementMaterial().createBlockData());
-    newMasked.add(new BlockPosition(x, y, z));
-    return 1;
+    return true;
   }
 
   public void clearPlayer(Player player) {

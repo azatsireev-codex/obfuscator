@@ -6,8 +6,19 @@ features:
     enabled: true
     minY: -64
     maxY: 64
+
+    # false = scan full 16x16 chunk area (stronger, like main project idea)
+    # true  = scan only chunk border (lighter, weaker)
+    boundaryOnly: false
+
+    # true  = hide only enclosed blocks (safer for false positives)
+    # false = hide all matching hiddenMaterials in range
+    requireEnclosed: true
+
+    # optional visibility relaxation (normally keep false for better protection)
+    checkViewCone: false
     viewConeDegrees: 100
-    maxReplacementsPerChunk: 384
+
     replacementMaterial: STONE
     hiddenMaterials:
       - DIAMOND_ORE
