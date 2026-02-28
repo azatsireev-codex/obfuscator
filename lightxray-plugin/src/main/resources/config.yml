@@ -1,16 +1,21 @@
-enabled: true
-minY: -64
-maxY: 64
-viewConeDegrees: 100
-maxReplacementsPerChunk: 384
-replacementMaterial: STONE
-hiddenMaterials:
-  - DIAMOND_ORE
-  - DEEPSLATE_DIAMOND_ORE
-  - EMERALD_ORE
-  - DEEPSLATE_EMERALD_ORE
-  - ANCIENT_DEBRIS
-  - GOLD_ORE
-  - DEEPSLATE_GOLD_ORE
-  - IRON_ORE
-  - DEEPSLATE_IRON_ORE
+core:
+  language: ru
+
+features:
+  xray:
+    enabled: true
+    minY: -64
+    maxY: 64
+    viewConeDegrees: 100
+    maxReplacementsPerChunk: 384
+    replacementMaterial: STONE
+    hiddenMaterials:
+      - DIAMOND_ORE
+      - DEEPSLATE_DIAMOND_ORE
+      - EMERALD_ORE
+      - DEEPSLATE_EMERALD_ORE
+      - ANCIENT_DEBRIS
+      - GOLD_ORE
+      - DEEPSLATE_GOLD_ORE
+      - IRON_ORE
+      - DEEPSLATE_IRON_ORE

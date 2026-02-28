@@ -1,14 +1,14 @@
-name: LightXRay
+name: GOOLak
 version: ${project.version}
-main: net.imprex.lightxray.LightXRayPlugin
+main: net.akat.goolak.core.GOOLakPlugin
 api-version: '1.16'
-authors: [Imprex]
+authors: [2FORWORD2]
 softdepend: [ProtocolLib]
 commands:
-  lightxray:
-    description: LightXRay admin command
+  goolak:
+    description: GOOLak admin command
     usage: /<command> reload
-    permission: lightxray.admin
+    permission: goolak.admin
 permissions:
-  lightxray.admin:
+  goolak.admin:
     default: op

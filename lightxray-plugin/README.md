@@ -1,6 +1,9 @@
-# LightXRay (autonomous)
+# GOOLak (autonomous)
 
-LightXRay is a standalone Spigot plugin module that intercepts `MAP_CHUNK` packets via ProtocolLib.
+GOOLak is a standalone Spigot plugin with antivirus-oriented architecture.
+
+Currently implemented feature module:
+- `features.xray`: MAP_CHUNK interception via ProtocolLib.
 
 ## Build
 

@@ -1,32 +1,34 @@
-package net.imprex.lightxray;
+package net.akat.goolak.feature.xray.listener;
 
 import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.events.ListenerPriority;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketEvent;
+import net.akat.goolak.core.GOOLakPlugin;
+import net.akat.goolak.feature.xray.service.XRayProtectionService;
 import org.bukkit.entity.Player;
 
-final class LightXRayPacketListener extends PacketAdapter {
+public final class XRayMapChunkPacketListener extends PacketAdapter {
 
-  private final LightXRayService service;
+  private final XRayProtectionService xRayProtectionService;
 
-  LightXRayPacketListener(LightXRayPlugin plugin, LightXRayService service) {
+  public XRayMapChunkPacketListener(GOOLakPlugin plugin, XRayProtectionService xRayProtectionService) {
     super(plugin, ListenerPriority.NORMAL, PacketType.Play.Server.MAP_CHUNK);
-    this.service = service;
+    this.xRayProtectionService = xRayProtectionService;
   }
 
-  void register() {
+  public void register() {
     ProtocolLibrary.getProtocolManager().addPacketListener(this);
   }
 
-  void unregister() {
+  public void unregister() {
     ProtocolLibrary.getProtocolManager().removePacketListener(this);
   }
 
   @Override
   public void onPacketSending(PacketEvent event) {
-    if (!this.service.config().enabled()) {
+    if (!this.xRayProtectionService.config().enabled()) {
       return;
     }
 
@@ -35,7 +37,6 @@ final class LightXRayPacketListener extends PacketAdapter {
     int chunkX = event.getPacket().getIntegers().read(0);
     int chunkZ = event.getPacket().getIntegers().read(1);
 
-    // lightweight rewrite marker: replace data array with cloned content when available
     if (event.getPacket().getByteArrays().size() > 0) {
       byte[] original = event.getPacket().getByteArrays().readSafely(0);
       if (original != null) {
@@ -43,6 +44,6 @@ final class LightXRayPacketListener extends PacketAdapter {
       }
     }
 
-    this.service.handleChunkPacket(player, chunkX, chunkZ);
+    this.xRayProtectionService.handleChunkPacket(player, chunkX, chunkZ);
   }
 }
