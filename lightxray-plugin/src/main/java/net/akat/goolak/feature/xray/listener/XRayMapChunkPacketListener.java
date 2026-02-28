@@ -6,15 +6,21 @@ import com.comphenix.protocol.events.ListenerPriority;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketEvent;
 import net.akat.goolak.core.GOOLakPlugin;
+import net.akat.goolak.core.concurrent.ServerTaskDispatcher;
 import net.akat.goolak.feature.xray.service.XRayProtectionService;
 import org.bukkit.entity.Player;
 
 public final class XRayMapChunkPacketListener extends PacketAdapter {
 
+  private final GOOLakPlugin plugin;
+  private final ServerTaskDispatcher taskDispatcher;
   private final XRayProtectionService xRayProtectionService;
 
-  public XRayMapChunkPacketListener(GOOLakPlugin plugin, XRayProtectionService xRayProtectionService) {
+  public XRayMapChunkPacketListener(GOOLakPlugin plugin, ServerTaskDispatcher taskDispatcher,
+      XRayProtectionService xRayProtectionService) {
     super(plugin, ListenerPriority.NORMAL, PacketType.Play.Server.MAP_CHUNK);
+    this.plugin = plugin;
+    this.taskDispatcher = taskDispatcher;
     this.xRayProtectionService = xRayProtectionService;
   }
 
@@ -44,6 +50,13 @@ public final class XRayMapChunkPacketListener extends PacketAdapter {
       }
     }
 
-    this.xRayProtectionService.handleChunkPacket(player, chunkX, chunkZ);
+    this.taskDispatcher.executeAtChunk(player.getWorld(), chunkX, chunkZ, () -> {
+      try {
+        this.xRayProtectionService.handleChunkPacket(player, chunkX, chunkZ);
+      } catch (Exception exception) {
+        this.plugin.getLogger().warning("XRay processing failed for chunk " + chunkX + "," + chunkZ
+            + " player=" + player.getName() + " reason=" + exception.getMessage());
+      }
+    });
   }
 }

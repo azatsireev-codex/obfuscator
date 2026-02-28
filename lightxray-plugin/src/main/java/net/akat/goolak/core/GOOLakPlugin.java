@@ -2,6 +2,7 @@ package net.akat.goolak.core;
 
 import java.util.Objects;
 import net.akat.goolak.core.command.GOOLakAdminCommand;
+import net.akat.goolak.core.concurrent.ServerTaskDispatcher;
 import net.akat.goolak.core.listener.PlayerSessionListener;
 import net.akat.goolak.feature.xray.config.XRayProtectionConfig;
 import net.akat.goolak.feature.xray.listener.XRayMapChunkPacketListener;
@@ -13,6 +14,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class GOOLakPlugin extends JavaPlugin {
 
+  private ServerTaskDispatcher taskDispatcher;
   private XRayProtectionService xRayProtectionService;
   private XRayMapChunkPacketListener xRayPacketListener;
 
@@ -27,18 +29,22 @@ public final class GOOLakPlugin extends JavaPlugin {
 
     this.saveDefaultConfig();
 
+    this.taskDispatcher = new ServerTaskDispatcher(this);
+
     XRayProtectionConfig xRayConfig = XRayProtectionConfig.from(this.getConfig());
     this.xRayProtectionService = new XRayProtectionService(xRayConfig);
 
-    this.xRayPacketListener = new XRayMapChunkPacketListener(this, this.xRayProtectionService);
+    this.xRayPacketListener = new XRayMapChunkPacketListener(this, this.taskDispatcher, this.xRayProtectionService);
     this.xRayPacketListener.register();
 
     PluginCommand command = Objects.requireNonNull(this.getCommand("goolak"), "Missing command goolak");
     command.setExecutor(new GOOLakAdminCommand(this));
 
-    this.getServer().getPluginManager().registerEvents(new PlayerSessionListener(this.xRayProtectionService), this);
+    this.getServer().getPluginManager().registerEvents(
+        new PlayerSessionListener(this.taskDispatcher, this.xRayProtectionService), this);
 
-    this.getLogger().info("GOOLak enabled. XRay MAP_CHUNK interception is active.");
+    this.getLogger().info("GOOLak enabled. XRay MAP_CHUNK interception is active. Folia scheduler mode="
+        + this.taskDispatcher.isFoliaLikeSchedulerAvailable());
   }
 
   @Override
@@ -49,6 +55,7 @@ public final class GOOLakPlugin extends JavaPlugin {
     }
 
     this.xRayProtectionService = null;
+    this.taskDispatcher = null;
   }
 
   public void reloadGOOLakConfig() {
