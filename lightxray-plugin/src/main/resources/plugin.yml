@@ -3,6 +3,7 @@ version: ${project.version}
 main: net.akat.goolak.core.GOOLakPlugin
 api-version: '1.16'
 authors: [2FORWORD2]
+folia-supported: true
 softdepend: [ProtocolLib]
 commands:
   goolak:
