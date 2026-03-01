@@ -31,8 +31,6 @@ public final class XRayProtectionService {
     }
 
     World world = player.getWorld();
-    int sectionCount = (world.getMaxHeight() - world.getMinHeight()) >> 4;
-
     ChunkBufferReader reader = new ChunkBufferReader(payload);
     ByteArrayOutputStream output = new ByteArrayOutputStream(payload.length);
 
@@ -40,16 +38,21 @@ public final class XRayProtectionService {
     int minY = Math.max(world.getMinHeight(), current.minY());
     int maxY = Math.min(world.getMaxHeight() - 1, current.maxY());
 
-    for (int sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
+    int sectionIndex = 0;
+    while (reader.remaining() > 0) {
       int sectionStart = reader.position();
       SectionData section = SectionData.read(reader);
-      int sectionEnd = reader.position();
+      if (section == null) {
+        return payload;
+      }
 
+      int sectionEnd = reader.position();
       int sectionMinY = world.getMinHeight() + (sectionIndex << 4);
       int sectionMaxY = sectionMinY + 15;
-      boolean insideY = sectionMaxY >= minY && sectionMinY <= maxY;
+      sectionIndex++;
 
       boolean sectionChanged = false;
+      boolean insideY = sectionMaxY >= minY && sectionMinY <= maxY;
       if (insideY) {
         int baseX = chunkX << 4;
         int baseY = sectionMinY;
@@ -73,14 +76,15 @@ public final class XRayProtectionService {
       }
     }
 
-    if (reader.remaining() > 0) {
-      output.write(payload, reader.position(), reader.remaining());
-    }
-
     return changed ? output.toByteArray() : payload;
   }
 
   private static final class SectionData {
+
+    private static final int BLOCK_COUNT = 4096;
+    private static final int BIOME_COUNT = 64;
+    private static final int MAX_BLOCK_ARRAY_LENGTH = 4096;
+    private static final int MAX_BIOME_ARRAY_LENGTH = 256;
 
     private final int blockCount;
     private final int bitsPerBlock;
@@ -103,47 +107,95 @@ public final class XRayProtectionService {
     }
 
     static SectionData read(ChunkBufferReader reader) {
-      int blockCount = reader.readUnsignedShort();
+      if (!reader.canRead(3)) {
+        return null;
+      }
 
+      int blockCount = reader.readUnsignedShort();
       int bitsPerBlock = reader.readUnsignedByte();
+      if (bitsPerBlock < 0 || bitsPerBlock > 15) {
+        return null;
+      }
+
       int[] palette;
       if (bitsPerBlock == 0) {
-        palette = new int[] {reader.readVarInt()};
+        Integer single = reader.readVarIntSafe();
+        if (single == null) {
+          return null;
+        }
+        palette = new int[] {single};
       } else if (bitsPerBlock <= 8) {
-        int size = reader.readVarInt();
+        Integer size = reader.readVarIntSafe();
+        if (size == null || size < 1 || size > 1 << bitsPerBlock) {
+          return null;
+        }
         palette = new int[size];
         for (int i = 0; i < size; i++) {
-          palette[i] = reader.readVarInt();
+          Integer value = reader.readVarIntSafe();
+          if (value == null) {
+            return null;
+          }
+          palette[i] = value;
         }
       } else {
         palette = null;
       }
 
-      int blockArrayLength = reader.readVarInt();
+      Integer blockArrayLength = reader.readVarIntSafe();
+      if (blockArrayLength == null || blockArrayLength < 0 || blockArrayLength > MAX_BLOCK_ARRAY_LENGTH) {
+        return null;
+      }
+      if (!reader.canRead(blockArrayLength * Long.BYTES)) {
+        return null;
+      }
       long[] blockStates = reader.readLongArray(blockArrayLength);
 
+      if (!reader.canRead(1)) {
+        return null;
+      }
       byte biomeBitsPerValue = (byte) reader.readUnsignedByte();
+      if (biomeBitsPerValue < 0 || biomeBitsPerValue > 6) {
+        return null;
+      }
+
       int[] biomePalette;
       if (biomeBitsPerValue == 0) {
-        biomePalette = new int[] {reader.readVarInt()};
+        Integer singleBiome = reader.readVarIntSafe();
+        if (singleBiome == null) {
+          return null;
+        }
+        biomePalette = new int[] {singleBiome};
       } else if (biomeBitsPerValue <= 3) {
-        int size = reader.readVarInt();
+        Integer size = reader.readVarIntSafe();
+        if (size == null || size < 1 || size > 1 << biomeBitsPerValue) {
+          return null;
+        }
         biomePalette = new int[size];
         for (int i = 0; i < size; i++) {
-          biomePalette[i] = reader.readVarInt();
+          Integer value = reader.readVarIntSafe();
+          if (value == null) {
+            return null;
+          }
+          biomePalette[i] = value;
         }
       } else {
         biomePalette = null;
       }
 
-      int biomeArrayLength = reader.readVarInt();
+      Integer biomeArrayLength = reader.readVarIntSafe();
+      if (biomeArrayLength == null || biomeArrayLength < 0 || biomeArrayLength > MAX_BIOME_ARRAY_LENGTH) {
+        return null;
+      }
+      if (!reader.canRead(biomeArrayLength * Long.BYTES)) {
+        return null;
+      }
       long[] biomeData = reader.readLongArray(biomeArrayLength);
 
       return new SectionData(blockCount, bitsPerBlock, palette, blockStates, biomeBitsPerValue, biomePalette, biomeData);
     }
 
     int findStateIdForMaterial(World world, int baseX, int baseY, int baseZ, Material target) {
-      for (int index = 0; index < 4096; index++) {
+      for (int index = 0; index < BLOCK_COUNT; index++) {
         int localX = index & 15;
         int localY = (index >> 8) & 15;
         int localZ = (index >> 4) & 15;
@@ -157,7 +209,7 @@ public final class XRayProtectionService {
     Set<Integer> findStateIdsForMaterials(World world, int baseX, int baseY, int baseZ,
         Set<Material> hiddenMaterials, boolean boundaryOnly) {
       Set<Integer> hiddenStateIds = new HashSet<>();
-      for (int index = 0; index < 4096; index++) {
+      for (int index = 0; index < BLOCK_COUNT; index++) {
         int localX = index & 15;
         int localY = (index >> 8) & 15;
         int localZ = (index >> 4) & 15;
@@ -184,7 +236,7 @@ public final class XRayProtectionService {
           }
         }
       } else {
-        for (int index = 0; index < 4096; index++) {
+        for (int index = 0; index < BLOCK_COUNT; index++) {
           int value = getValue(this.blockStates, this.bitsPerBlock, index);
           if (hiddenStateIds.contains(value)) {
             setValue(this.blockStates, this.bitsPerBlock, index, replacementStateId);
@@ -243,16 +295,19 @@ public final class XRayProtectionService {
     }
 
     private static int getValue(long[] data, int bits, int index) {
-      if (bits == 0) {
+      if (bits == 0 || data.length == 0) {
         return 0;
       }
       int bitIndex = index * bits;
       int longIndex = bitIndex >>> 6;
+      if (longIndex >= data.length) {
+        return 0;
+      }
       int startBit = bitIndex & 63;
       long mask = (1L << bits) - 1L;
       long value = (data[longIndex] >>> startBit) & mask;
       int endBit = startBit + bits;
-      if (endBit > 64) {
+      if (endBit > 64 && longIndex + 1 < data.length) {
         int spill = endBit - 64;
         value |= (data[longIndex + 1] & ((1L << spill) - 1L)) << (bits - spill);
       }
@@ -260,17 +315,20 @@ public final class XRayProtectionService {
     }
 
     private static void setValue(long[] data, int bits, int index, int value) {
-      if (bits == 0) {
+      if (bits == 0 || data.length == 0) {
         return;
       }
       int bitIndex = index * bits;
       int longIndex = bitIndex >>> 6;
+      if (longIndex >= data.length) {
+        return;
+      }
       int startBit = bitIndex & 63;
       long mask = ((1L << bits) - 1L) << startBit;
       data[longIndex] = (data[longIndex] & ~mask) | (((long) value << startBit) & mask);
 
       int endBit = startBit + bits;
-      if (endBit > 64) {
+      if (endBit > 64 && longIndex + 1 < data.length) {
         int spill = endBit - 64;
         long spillMask = (1L << spill) - 1L;
         data[longIndex + 1] = (data[longIndex + 1] & ~spillMask) | (((long) value >>> (bits - spill)) & spillMask);
@@ -317,6 +375,10 @@ public final class XRayProtectionService {
       return this.payload.length - this.position;
     }
 
+    boolean canRead(int bytes) {
+      return bytes >= 0 && this.position + bytes <= this.payload.length;
+    }
+
     int readUnsignedByte() {
       return this.payload[this.position++] & 0xFF;
     }
@@ -327,16 +389,21 @@ public final class XRayProtectionService {
       return (high << 8) | low;
     }
 
-    int readVarInt() {
+    Integer readVarIntSafe() {
       int value = 0;
       int shift = 0;
-      int current;
-      do {
-        current = readUnsignedByte();
+      for (int i = 0; i < 5; i++) {
+        if (!canRead(1)) {
+          return null;
+        }
+        int current = readUnsignedByte();
         value |= (current & 0x7F) << shift;
+        if ((current & 0x80) == 0) {
+          return value;
+        }
         shift += 7;
-      } while ((current & 0x80) != 0);
-      return value;
+      }
+      return null;
     }
 
     long[] readLongArray(int length) {

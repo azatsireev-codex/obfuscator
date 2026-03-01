@@ -5,12 +5,17 @@ import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.events.ListenerPriority;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketEvent;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import net.akat.goolak.core.GOOLakPlugin;
 import net.akat.goolak.core.concurrent.ServerTaskDispatcher;
 import net.akat.goolak.feature.xray.service.XRayProtectionService;
 import org.bukkit.entity.Player;
 
 public final class XRayMapChunkPacketListener extends PacketAdapter {
+
+  private static final long REWRITE_TIMEOUT_MS = 25L;
 
   private final GOOLakPlugin plugin;
   private final ServerTaskDispatcher taskDispatcher;
@@ -49,14 +54,39 @@ public final class XRayMapChunkPacketListener extends PacketAdapter {
       return;
     }
 
-    try {
-      byte[] rewritten = this.xRayProtectionService.rewriteChunkPacket(player, chunkX, chunkZ, original);
-      if (rewritten != original) {
-        chunkData.setData(rewritten);
+    AtomicReference<byte[]> rewrittenRef = new AtomicReference<>(original);
+    AtomicReference<Throwable> errorRef = new AtomicReference<>();
+    CountDownLatch latch = new CountDownLatch(1);
+
+    this.taskDispatcher.executeAtChunk(player.getWorld(), chunkX, chunkZ, () -> {
+      try {
+        rewrittenRef.set(this.xRayProtectionService.rewriteChunkPacket(player, chunkX, chunkZ, original));
+      } catch (Throwable throwable) {
+        errorRef.set(throwable);
+      } finally {
+        latch.countDown();
       }
-    } catch (Exception exception) {
+    });
+
+    try {
+      if (!latch.await(REWRITE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+        return;
+      }
+    } catch (InterruptedException interruptedException) {
+      Thread.currentThread().interrupt();
+      return;
+    }
+
+    Throwable throwable = errorRef.get();
+    if (throwable != null) {
       this.plugin.getLogger().warning("XRay chunk rewrite failed for chunk " + chunkX + "," + chunkZ
-          + " player=" + player.getName() + " reason=" + exception.getMessage());
+          + " player=" + player.getName() + " reason=" + throwable.getMessage());
+      return;
+    }
+
+    byte[] rewritten = rewrittenRef.get();
+    if (rewritten != null && rewritten != original) {
+      chunkData.setData(rewritten);
     }
   }
 }
