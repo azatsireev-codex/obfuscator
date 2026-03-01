@@ -20,6 +20,10 @@ public final class XRayProtectionService {
   private final Map<UUID, Set<BlockPosition>> maskedByPlayer = new ConcurrentHashMap<>();
   private final BulkBlockUpdateSender bulkSender = new BulkBlockUpdateSender();
 
+  public boolean hasBulkUpdateSupport() {
+    return this.bulkSender.isSupported();
+  }
+
   private volatile XRayProtectionConfig config;
 
   public XRayProtectionService(XRayProtectionConfig config) {

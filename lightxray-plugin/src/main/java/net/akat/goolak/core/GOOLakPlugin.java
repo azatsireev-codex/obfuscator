@@ -45,6 +45,7 @@ public final class GOOLakPlugin extends JavaPlugin {
 
     this.getLogger().info("GOOLak enabled. XRay MAP_CHUNK interception is active. Folia scheduler mode="
         + this.taskDispatcher.isFoliaLikeSchedulerAvailable());
+    this.getLogger().info("Bulk multi-block update support=" + this.xRayProtectionService.hasBulkUpdateSupport());
   }
 
   @Override

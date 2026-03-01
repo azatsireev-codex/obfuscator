@@ -20,22 +20,19 @@ final class BulkBlockUpdateSender {
     this.sendMultiBlockChangeMethod = method;
   }
 
+  boolean isSupported() {
+    return this.sendMultiBlockChangeMethod != null;
+  }
+
   void send(Player player, Map<Location, BlockData> blockUpdates) {
-    if (blockUpdates.isEmpty()) {
+    if (blockUpdates.isEmpty() || this.sendMultiBlockChangeMethod == null) {
       return;
     }
 
-    if (this.sendMultiBlockChangeMethod != null) {
-      try {
-        this.sendMultiBlockChangeMethod.invoke(player, blockUpdates);
-        return;
-      } catch (Exception ignored) {
-        // fallback below
-      }
-    }
-
-    for (Map.Entry<Location, BlockData> entry : blockUpdates.entrySet()) {
-      player.sendBlockChange(entry.getKey(), entry.getValue());
+    try {
+      this.sendMultiBlockChangeMethod.invoke(player, blockUpdates);
+    } catch (Exception ignored) {
+      // intentionally ignore; packet flow should not crash game thread
     }
   }
 }
