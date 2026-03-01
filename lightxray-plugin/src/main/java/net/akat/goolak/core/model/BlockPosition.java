@@ -1,4 +1,3 @@
 package net.akat.goolak.core.model;
 
-public record BlockPosition(int x, int y, int z) {
-}
+// Removed: no per-player masked block tracking is used in payload rewrite mode.
