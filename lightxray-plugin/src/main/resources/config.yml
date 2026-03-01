@@ -1,0 +1,26 @@
+core:
+  language: ru
+
+features:
+  xray:
+    enabled: true
+    minY: -64
+    maxY: 64
+
+    # false = scan full 16x16 chunk area (stronger)
+    # true  = scan only chunk border (lighter)
+    boundaryOnly: false
+
+    # material used to replace hidden block states directly in MAP_CHUNK payload
+    replacementMaterial: STONE
+
+    hiddenMaterials:
+      - DIAMOND_ORE
+      - DEEPSLATE_DIAMOND_ORE
+      - EMERALD_ORE
+      - DEEPSLATE_EMERALD_ORE
+      - ANCIENT_DEBRIS
+      - GOLD_ORE
+      - DEEPSLATE_GOLD_ORE
+      - IRON_ORE
+      - DEEPSLATE_IRON_ORE
