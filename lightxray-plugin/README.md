@@ -25,3 +25,8 @@ No dependency on `orebfuscator-*` modules is required for build or runtime.
 - `features.xray.boundaryOnly: false` — scan full chunk area (better protection).
 - `features.xray.requireEnclosed: true` — mimic enclosed-block style filtering.
 - `features.xray.checkViewCone: false` — do not skip blocks in front of player (stronger protection).
+
+
+## Network update strategy
+
+- GOOLak uses batched block updates (`Player#sendMultiBlockChange` when available) instead of one-by-one `sendBlockChange` calls.

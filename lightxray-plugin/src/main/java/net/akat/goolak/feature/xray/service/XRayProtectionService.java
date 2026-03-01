@@ -1,5 +1,6 @@
 package net.akat.goolak.feature.xray.service;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -10,12 +11,14 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
 public final class XRayProtectionService {
 
   private final Map<UUID, Set<BlockPosition>> maskedByPlayer = new ConcurrentHashMap<>();
+  private final BulkBlockUpdateSender bulkSender = new BulkBlockUpdateSender();
 
   private volatile XRayProtectionConfig config;
 
@@ -48,6 +51,7 @@ public final class XRayProtectionService {
 
     Set<BlockPosition> playerMask = this.maskedByPlayer.computeIfAbsent(
         player.getUniqueId(), key -> ConcurrentHashMap.newKeySet());
+    Map<Location, BlockData> updates = new LinkedHashMap<>();
 
     for (int y = minY; y <= maxY; y++) {
       for (int localZ = 0; localZ < 16; localZ++) {
@@ -60,12 +64,15 @@ public final class XRayProtectionService {
           int z = baseZ + localZ;
 
           if (this.shouldMask(player, world, x, y, z, current)) {
-            player.sendBlockChange(new Location(world, x, y, z), current.replacementMaterial().createBlockData());
+            Location location = new Location(world, x, y, z);
+            updates.put(location, current.replacementMaterial().createBlockData());
             playerMask.add(new BlockPosition(x, y, z));
           }
         }
       }
     }
+
+    this.bulkSender.send(player, updates);
   }
 
   private boolean shouldMask(Player player, World world, int x, int y, int z, XRayProtectionConfig current) {
@@ -93,10 +100,13 @@ public final class XRayProtectionService {
     }
 
     World world = player.getWorld();
+    Map<Location, BlockData> updates = new LinkedHashMap<>();
     for (BlockPosition pos : oldMask) {
-      player.sendBlockChange(new Location(world, pos.x(), pos.y(), pos.z()),
-          world.getBlockAt(pos.x(), pos.y(), pos.z()).getBlockData());
+      Location location = new Location(world, pos.x(), pos.y(), pos.z());
+      updates.put(location, world.getBlockAt(pos.x(), pos.y(), pos.z()).getBlockData());
     }
+
+    this.bulkSender.send(player, updates);
   }
 
   private static boolean isEnclosed(Block block) {
