@@ -43,25 +43,20 @@ public final class XRayMapChunkPacketListener extends PacketAdapter {
     int chunkX = event.getPacket().getIntegers().read(0);
     int chunkZ = event.getPacket().getIntegers().read(1);
 
-    if (event.getPacket().getByteArrays().size() == 0) {
-      return;
-    }
-
-    byte[] original = event.getPacket().getByteArrays().readSafely(0);
+    PacketChunkDataAccessor chunkData = new PacketChunkDataAccessor(event.getPacket());
+    byte[] original = chunkData.getData();
     if (original == null || original.length == 0) {
       return;
     }
 
-    this.taskDispatcher.executeAtChunk(player.getWorld(), chunkX, chunkZ, () -> {
-      try {
-        byte[] rewritten = this.xRayProtectionService.rewriteChunkPacket(player, chunkX, chunkZ, original);
-        if (rewritten != original) {
-          event.getPacket().getByteArrays().writeSafely(0, rewritten);
-        }
-      } catch (Exception exception) {
-        this.plugin.getLogger().warning("XRay chunk rewrite failed for chunk " + chunkX + "," + chunkZ
-            + " player=" + player.getName() + " reason=" + exception.getMessage());
+    try {
+      byte[] rewritten = this.xRayProtectionService.rewriteChunkPacket(player, chunkX, chunkZ, original);
+      if (rewritten != original) {
+        chunkData.setData(rewritten);
       }
-    });
+    } catch (Exception exception) {
+      this.plugin.getLogger().warning("XRay chunk rewrite failed for chunk " + chunkX + "," + chunkZ
+          + " player=" + player.getName() + " reason=" + exception.getMessage());
+    }
   }
 }
