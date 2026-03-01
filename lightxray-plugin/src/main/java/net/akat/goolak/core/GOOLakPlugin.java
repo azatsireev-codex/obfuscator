@@ -3,7 +3,6 @@ package net.akat.goolak.core;
 import java.util.Objects;
 import net.akat.goolak.core.command.GOOLakAdminCommand;
 import net.akat.goolak.core.concurrent.ServerTaskDispatcher;
-import net.akat.goolak.core.listener.PlayerSessionListener;
 import net.akat.goolak.feature.xray.config.XRayProtectionConfig;
 import net.akat.goolak.feature.xray.listener.XRayMapChunkPacketListener;
 import net.akat.goolak.feature.xray.service.XRayProtectionService;
@@ -40,12 +39,8 @@ public final class GOOLakPlugin extends JavaPlugin {
     PluginCommand command = Objects.requireNonNull(this.getCommand("goolak"), "Missing command goolak");
     command.setExecutor(new GOOLakAdminCommand(this));
 
-    this.getServer().getPluginManager().registerEvents(
-        new PlayerSessionListener(this.taskDispatcher, this.xRayProtectionService), this);
-
-    this.getLogger().info("GOOLak enabled. XRay MAP_CHUNK interception is active. Folia scheduler mode="
+    this.getLogger().info("GOOLak enabled. XRay MAP_CHUNK payload rewrite is active. Folia scheduler mode="
         + this.taskDispatcher.isFoliaLikeSchedulerAvailable());
-    this.getLogger().info("Bulk multi-block update support=" + this.xRayProtectionService.hasBulkUpdateSupport());
   }
 
   @Override

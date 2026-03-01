@@ -3,7 +3,7 @@
 GOOLak is a standalone Spigot plugin with antivirus-oriented architecture.
 
 Currently implemented feature module:
-- `features.xray`: MAP_CHUNK interception via ProtocolLib.
+- `features.xray`: MAP_CHUNK interception via ProtocolLib with direct payload rewrite (`packet.setData(...)` style).
 
 ## Build
 
@@ -22,11 +22,12 @@ No dependency on `orebfuscator-*` modules is required for build or runtime.
 
 ## XRay mode notes
 
-- `features.xray.boundaryOnly: false` — scan full chunk area (better protection).
-- `features.xray.requireEnclosed: true` — mimic enclosed-block style filtering.
-- `features.xray.checkViewCone: false` — do not skip blocks in front of player (stronger protection).
+- GOOLak rewrites chunk packet section data directly in the MAP_CHUNK payload.
+- `features.xray.boundaryOnly: false` — process full chunk area (better protection).
+- `features.xray.boundaryOnly: true` — process only chunk boundaries (lighter mode).
+- `features.xray.replacementMaterial` must exist in a section being rewritten.
 
+## Network strategy
 
-## Network update strategy
-
-- GOOLak uses batched block updates (`Player#sendMultiBlockChange` when available) instead of one-by-one `sendBlockChange` calls.
+- Uses payload-level replacement during MAP_CHUNK interception.
+- Does not depend on post-send block-update bursts (`sendBlockChange` / `sendMultiBlockChange`).

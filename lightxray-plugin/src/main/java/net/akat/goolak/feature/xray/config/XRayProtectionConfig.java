@@ -12,22 +12,15 @@ public final class XRayProtectionConfig {
   private final int minY;
   private final int maxY;
   private final boolean boundaryOnly;
-  private final boolean requireEnclosed;
-  private final boolean checkViewCone;
-  private final double viewConeDegrees;
   private final Material replacementMaterial;
   private final Set<Material> hiddenMaterials;
 
   private XRayProtectionConfig(boolean enabled, int minY, int maxY, boolean boundaryOnly,
-      boolean requireEnclosed, boolean checkViewCone, double viewConeDegrees,
       Material replacementMaterial, Set<Material> hiddenMaterials) {
     this.enabled = enabled;
     this.minY = minY;
     this.maxY = maxY;
     this.boundaryOnly = boundaryOnly;
-    this.requireEnclosed = requireEnclosed;
-    this.checkViewCone = checkViewCone;
-    this.viewConeDegrees = viewConeDegrees;
     this.replacementMaterial = replacementMaterial;
     this.hiddenMaterials = hiddenMaterials;
   }
@@ -41,11 +34,6 @@ public final class XRayProtectionConfig {
     int maxY = Math.max(configuredMinY, configuredMaxY);
 
     boolean boundaryOnly = config.getBoolean("features.xray.boundaryOnly", false);
-    boolean requireEnclosed = config.getBoolean("features.xray.requireEnclosed", true);
-    boolean checkViewCone = config.getBoolean("features.xray.checkViewCone", false);
-
-    double viewConeDegrees = Math.min(180d, Math.max(1d,
-        config.getDouble("features.xray.viewConeDegrees", 100d)));
 
     Material replacement = Material.matchMaterial(
         config.getString("features.xray.replacementMaterial", "STONE"));
@@ -67,8 +55,7 @@ public final class XRayProtectionConfig {
       hiddenMaterials.add(Material.DEEPSLATE_DIAMOND_ORE);
     }
 
-    return new XRayProtectionConfig(enabled, minY, maxY, boundaryOnly, requireEnclosed, checkViewCone,
-        viewConeDegrees, replacement, hiddenMaterials);
+    return new XRayProtectionConfig(enabled, minY, maxY, boundaryOnly, replacement, hiddenMaterials);
   }
 
   public boolean enabled() {
@@ -85,18 +72,6 @@ public final class XRayProtectionConfig {
 
   public boolean boundaryOnly() {
     return this.boundaryOnly;
-  }
-
-  public boolean requireEnclosed() {
-    return this.requireEnclosed;
-  }
-
-  public boolean checkViewCone() {
-    return this.checkViewCone;
-  }
-
-  public double viewConeDegrees() {
-    return this.viewConeDegrees;
   }
 
   public Material replacementMaterial() {

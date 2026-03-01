@@ -1,28 +1,14 @@
 package net.akat.goolak.feature.xray.service;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.io.ByteArrayOutputStream;
+import java.util.HashSet;
 import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import net.akat.goolak.core.model.BlockPosition;
 import net.akat.goolak.feature.xray.config.XRayProtectionConfig;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.block.Block;
-import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
-import org.bukkit.util.Vector;
 
 public final class XRayProtectionService {
-
-  private final Map<UUID, Set<BlockPosition>> maskedByPlayer = new ConcurrentHashMap<>();
-  private final BulkBlockUpdateSender bulkSender = new BulkBlockUpdateSender();
-
-  public boolean hasBulkUpdateSupport() {
-    return this.bulkSender.isSupported();
-  }
 
   private volatile XRayProtectionConfig config;
 
@@ -38,105 +24,336 @@ public final class XRayProtectionService {
     return this.config;
   }
 
-  public void handleChunkPacket(Player player, int chunkX, int chunkZ) {
+  public byte[] rewriteChunkPacket(Player player, int chunkX, int chunkZ, byte[] payload) {
     XRayProtectionConfig current = this.config;
-    if (!current.enabled() || !player.isOnline() || player.isDead()) {
-      return;
+    if (!current.enabled() || payload == null || payload.length == 0 || !player.isOnline() || player.isDead()) {
+      return payload;
     }
 
     World world = player.getWorld();
-    int worldMinY = world.getMinHeight();
-    int worldMaxY = world.getMaxHeight() - 1;
-    int minY = Math.max(worldMinY, current.minY());
-    int maxY = Math.min(worldMaxY, current.maxY());
+    int sectionCount = (world.getMaxHeight() - world.getMinHeight()) >> 4;
 
-    int baseX = chunkX << 4;
-    int baseZ = chunkZ << 4;
+    ChunkBufferReader reader = new ChunkBufferReader(payload);
+    ByteArrayOutputStream output = new ByteArrayOutputStream(payload.length);
 
-    Set<BlockPosition> playerMask = this.maskedByPlayer.computeIfAbsent(
-        player.getUniqueId(), key -> ConcurrentHashMap.newKeySet());
-    Map<Location, BlockData> updates = new LinkedHashMap<>();
+    boolean changed = false;
+    int minY = Math.max(world.getMinHeight(), current.minY());
+    int maxY = Math.min(world.getMaxHeight() - 1, current.maxY());
 
-    for (int y = minY; y <= maxY; y++) {
-      for (int localZ = 0; localZ < 16; localZ++) {
-        for (int localX = 0; localX < 16; localX++) {
-          if (current.boundaryOnly() && localX > 0 && localX < 15 && localZ > 0 && localZ < 15) {
-            continue;
-          }
+    for (int sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
+      int sectionStart = reader.position();
+      SectionData section = SectionData.read(reader);
+      int sectionEnd = reader.position();
 
-          int x = baseX + localX;
-          int z = baseZ + localZ;
+      int sectionMinY = world.getMinHeight() + (sectionIndex << 4);
+      int sectionMaxY = sectionMinY + 15;
+      boolean insideY = sectionMaxY >= minY && sectionMinY <= maxY;
 
-          if (this.shouldMask(player, world, x, y, z, current)) {
-            Location location = new Location(world, x, y, z);
-            updates.put(location, current.replacementMaterial().createBlockData());
-            playerMask.add(new BlockPosition(x, y, z));
+      boolean sectionChanged = false;
+      if (insideY) {
+        int baseX = chunkX << 4;
+        int baseY = sectionMinY;
+        int baseZ = chunkZ << 4;
+
+        int replacementStateId = section.findStateIdForMaterial(world, baseX, baseY, baseZ, current.replacementMaterial());
+        if (replacementStateId != Integer.MIN_VALUE) {
+          Set<Integer> hiddenStateIds = section.findStateIdsForMaterials(world, baseX, baseY, baseZ,
+              current.hiddenMaterials(), current.boundaryOnly());
+          if (!hiddenStateIds.isEmpty()) {
+            sectionChanged = section.replaceStates(hiddenStateIds, replacementStateId);
+            changed |= sectionChanged;
           }
         }
       }
+
+      if (sectionChanged) {
+        section.write(output);
+      } else {
+        output.write(payload, sectionStart, sectionEnd - sectionStart);
+      }
     }
 
-    this.bulkSender.send(player, updates);
+    if (reader.remaining() > 0) {
+      output.write(payload, reader.position(), reader.remaining());
+    }
+
+    return changed ? output.toByteArray() : payload;
   }
 
-  private boolean shouldMask(Player player, World world, int x, int y, int z, XRayProtectionConfig current) {
-    Block block = world.getBlockAt(x, y, z);
-    Material material = block.getType();
-    if (!current.hiddenMaterials().contains(material)) {
-      return false;
+  private static final class SectionData {
+
+    private final int blockCount;
+    private final int bitsPerBlock;
+    private final int[] palette;
+    private final long[] blockStates;
+
+    private final byte biomeBitsPerValue;
+    private final int[] biomePalette;
+    private final long[] biomeData;
+
+    private SectionData(int blockCount, int bitsPerBlock, int[] palette, long[] blockStates,
+        byte biomeBitsPerValue, int[] biomePalette, long[] biomeData) {
+      this.blockCount = blockCount;
+      this.bitsPerBlock = bitsPerBlock;
+      this.palette = palette;
+      this.blockStates = blockStates;
+      this.biomeBitsPerValue = biomeBitsPerValue;
+      this.biomePalette = biomePalette;
+      this.biomeData = biomeData;
     }
 
-    if (current.requireEnclosed() && !isEnclosed(block)) {
-      return false;
+    static SectionData read(ChunkBufferReader reader) {
+      int blockCount = reader.readUnsignedShort();
+
+      int bitsPerBlock = reader.readUnsignedByte();
+      int[] palette;
+      if (bitsPerBlock == 0) {
+        palette = new int[] {reader.readVarInt()};
+      } else if (bitsPerBlock <= 8) {
+        int size = reader.readVarInt();
+        palette = new int[size];
+        for (int i = 0; i < size; i++) {
+          palette[i] = reader.readVarInt();
+        }
+      } else {
+        palette = null;
+      }
+
+      int blockArrayLength = reader.readVarInt();
+      long[] blockStates = reader.readLongArray(blockArrayLength);
+
+      byte biomeBitsPerValue = (byte) reader.readUnsignedByte();
+      int[] biomePalette;
+      if (biomeBitsPerValue == 0) {
+        biomePalette = new int[] {reader.readVarInt()};
+      } else if (biomeBitsPerValue <= 3) {
+        int size = reader.readVarInt();
+        biomePalette = new int[size];
+        for (int i = 0; i < size; i++) {
+          biomePalette[i] = reader.readVarInt();
+        }
+      } else {
+        biomePalette = null;
+      }
+
+      int biomeArrayLength = reader.readVarInt();
+      long[] biomeData = reader.readLongArray(biomeArrayLength);
+
+      return new SectionData(blockCount, bitsPerBlock, palette, blockStates, biomeBitsPerValue, biomePalette, biomeData);
     }
 
-    if (current.checkViewCone() && isInsideViewCone(player, x + 0.5, y + 0.5, z + 0.5, current.viewConeDegrees())) {
-      return false;
+    int findStateIdForMaterial(World world, int baseX, int baseY, int baseZ, Material target) {
+      for (int index = 0; index < 4096; index++) {
+        int localX = index & 15;
+        int localY = (index >> 8) & 15;
+        int localZ = (index >> 4) & 15;
+        if (world.getBlockAt(baseX + localX, baseY + localY, baseZ + localZ).getType() == target) {
+          return this.getStateId(index);
+        }
+      }
+      return Integer.MIN_VALUE;
     }
 
-    return true;
+    Set<Integer> findStateIdsForMaterials(World world, int baseX, int baseY, int baseZ,
+        Set<Material> hiddenMaterials, boolean boundaryOnly) {
+      Set<Integer> hiddenStateIds = new HashSet<>();
+      for (int index = 0; index < 4096; index++) {
+        int localX = index & 15;
+        int localY = (index >> 8) & 15;
+        int localZ = (index >> 4) & 15;
+
+        if (boundaryOnly && localX > 0 && localX < 15 && localZ > 0 && localZ < 15) {
+          continue;
+        }
+
+        Material material = world.getBlockAt(baseX + localX, baseY + localY, baseZ + localZ).getType();
+        if (hiddenMaterials.contains(material)) {
+          hiddenStateIds.add(this.getStateId(index));
+        }
+      }
+      return hiddenStateIds;
+    }
+
+    boolean replaceStates(Set<Integer> hiddenStateIds, int replacementStateId) {
+      boolean changed = false;
+      if (this.palette != null) {
+        for (int i = 0; i < this.palette.length; i++) {
+          if (hiddenStateIds.contains(this.palette[i])) {
+            this.palette[i] = replacementStateId;
+            changed = true;
+          }
+        }
+      } else {
+        for (int index = 0; index < 4096; index++) {
+          int value = getValue(this.blockStates, this.bitsPerBlock, index);
+          if (hiddenStateIds.contains(value)) {
+            setValue(this.blockStates, this.bitsPerBlock, index, replacementStateId);
+            changed = true;
+          }
+        }
+      }
+      return changed;
+    }
+
+    int getStateId(int blockIndex) {
+      if (this.palette != null) {
+        int paletteIndex = this.bitsPerBlock == 0 ? 0 : getValue(this.blockStates, this.bitsPerBlock, blockIndex);
+        if (paletteIndex < 0 || paletteIndex >= this.palette.length) {
+          return 0;
+        }
+        return this.palette[paletteIndex];
+      }
+
+      return getValue(this.blockStates, this.bitsPerBlock, blockIndex);
+    }
+
+    void write(ByteArrayOutputStream output) {
+      output.write((this.blockCount >>> 8) & 0xFF);
+      output.write(this.blockCount & 0xFF);
+
+      output.write(this.bitsPerBlock & 0xFF);
+      if (this.palette != null) {
+        if (this.bitsPerBlock == 0) {
+          writeVarInt(output, this.palette[0]);
+        } else {
+          writeVarInt(output, this.palette.length);
+          for (int value : this.palette) {
+            writeVarInt(output, value);
+          }
+        }
+      }
+
+      writeVarInt(output, this.blockStates.length);
+      writeLongArray(output, this.blockStates);
+
+      output.write(this.biomeBitsPerValue & 0xFF);
+      if (this.biomePalette != null) {
+        if (this.biomeBitsPerValue == 0) {
+          writeVarInt(output, this.biomePalette[0]);
+        } else {
+          writeVarInt(output, this.biomePalette.length);
+          for (int value : this.biomePalette) {
+            writeVarInt(output, value);
+          }
+        }
+      }
+
+      writeVarInt(output, this.biomeData.length);
+      writeLongArray(output, this.biomeData);
+    }
+
+    private static int getValue(long[] data, int bits, int index) {
+      if (bits == 0) {
+        return 0;
+      }
+      int bitIndex = index * bits;
+      int longIndex = bitIndex >>> 6;
+      int startBit = bitIndex & 63;
+      long mask = (1L << bits) - 1L;
+      long value = (data[longIndex] >>> startBit) & mask;
+      int endBit = startBit + bits;
+      if (endBit > 64) {
+        int spill = endBit - 64;
+        value |= (data[longIndex + 1] & ((1L << spill) - 1L)) << (bits - spill);
+      }
+      return (int) value;
+    }
+
+    private static void setValue(long[] data, int bits, int index, int value) {
+      if (bits == 0) {
+        return;
+      }
+      int bitIndex = index * bits;
+      int longIndex = bitIndex >>> 6;
+      int startBit = bitIndex & 63;
+      long mask = ((1L << bits) - 1L) << startBit;
+      data[longIndex] = (data[longIndex] & ~mask) | (((long) value << startBit) & mask);
+
+      int endBit = startBit + bits;
+      if (endBit > 64) {
+        int spill = endBit - 64;
+        long spillMask = (1L << spill) - 1L;
+        data[longIndex + 1] = (data[longIndex + 1] & ~spillMask) | (((long) value >>> (bits - spill)) & spillMask);
+      }
+    }
+
+    private static void writeVarInt(ByteArrayOutputStream output, int value) {
+      int current = value;
+      while ((current & -128) != 0) {
+        output.write((current & 127) | 128);
+        current >>>= 7;
+      }
+      output.write(current);
+    }
+
+    private static void writeLongArray(ByteArrayOutputStream output, long[] values) {
+      for (long value : values) {
+        output.write((int) ((value >>> 56) & 0xFF));
+        output.write((int) ((value >>> 48) & 0xFF));
+        output.write((int) ((value >>> 40) & 0xFF));
+        output.write((int) ((value >>> 32) & 0xFF));
+        output.write((int) ((value >>> 24) & 0xFF));
+        output.write((int) ((value >>> 16) & 0xFF));
+        output.write((int) ((value >>> 8) & 0xFF));
+        output.write((int) (value & 0xFF));
+      }
+    }
   }
 
-  public void clearPlayer(Player player) {
-    Set<BlockPosition> oldMask = this.maskedByPlayer.remove(player.getUniqueId());
-    if (oldMask == null || oldMask.isEmpty()) {
-      return;
+  private static final class ChunkBufferReader {
+
+    private final byte[] payload;
+    private int position;
+
+    ChunkBufferReader(byte[] payload) {
+      this.payload = payload;
     }
 
-    World world = player.getWorld();
-    Map<Location, BlockData> updates = new LinkedHashMap<>();
-    for (BlockPosition pos : oldMask) {
-      Location location = new Location(world, pos.x(), pos.y(), pos.z());
-      updates.put(location, world.getBlockAt(pos.x(), pos.y(), pos.z()).getBlockData());
+    int position() {
+      return this.position;
     }
 
-    this.bulkSender.send(player, updates);
-  }
-
-  private static boolean isEnclosed(Block block) {
-    return isOccluding(block.getRelative(1, 0, 0))
-        && isOccluding(block.getRelative(-1, 0, 0))
-        && isOccluding(block.getRelative(0, 1, 0))
-        && isOccluding(block.getRelative(0, -1, 0))
-        && isOccluding(block.getRelative(0, 0, 1))
-        && isOccluding(block.getRelative(0, 0, -1));
-  }
-
-  private static boolean isOccluding(Block block) {
-    Material material = block.getType();
-    return material.isOccluding() && material.isSolid();
-  }
-
-  private static boolean isInsideViewCone(Player player, double x, double y, double z, double viewConeDegrees) {
-    Location eye = player.getEyeLocation();
-    Vector toBlock = new Vector(x - eye.getX(), y - eye.getY(), z - eye.getZ());
-    if (toBlock.lengthSquared() < 0.01) {
-      return true;
+    int remaining() {
+      return this.payload.length - this.position;
     }
 
-    Vector direction = eye.getDirection();
-    double dot = direction.normalize().dot(toBlock.normalize());
-    double cosHalfFov = Math.cos(Math.toRadians(viewConeDegrees / 2d));
-    return dot >= cosHalfFov;
+    int readUnsignedByte() {
+      return this.payload[this.position++] & 0xFF;
+    }
+
+    int readUnsignedShort() {
+      int high = readUnsignedByte();
+      int low = readUnsignedByte();
+      return (high << 8) | low;
+    }
+
+    int readVarInt() {
+      int value = 0;
+      int shift = 0;
+      int current;
+      do {
+        current = readUnsignedByte();
+        value |= (current & 0x7F) << shift;
+        shift += 7;
+      } while ((current & 0x80) != 0);
+      return value;
+    }
+
+    long[] readLongArray(int length) {
+      long[] data = new long[length];
+      for (int i = 0; i < length; i++) {
+        long value = 0;
+        value |= ((long) readUnsignedByte()) << 56;
+        value |= ((long) readUnsignedByte()) << 48;
+        value |= ((long) readUnsignedByte()) << 40;
+        value |= ((long) readUnsignedByte()) << 32;
+        value |= ((long) readUnsignedByte()) << 24;
+        value |= ((long) readUnsignedByte()) << 16;
+        value |= ((long) readUnsignedByte()) << 8;
+        value |= readUnsignedByte();
+        data[i] = value;
+      }
+      return data;
+    }
   }
 }

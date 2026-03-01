@@ -7,19 +7,13 @@ features:
     minY: -64
     maxY: 64
 
-    # false = scan full 16x16 chunk area (stronger, like main project idea)
-    # true  = scan only chunk border (lighter, weaker)
+    # false = scan full 16x16 chunk area (stronger)
+    # true  = scan only chunk border (lighter)
     boundaryOnly: false
 
-    # true  = hide only enclosed blocks (safer for false positives)
-    # false = hide all matching hiddenMaterials in range
-    requireEnclosed: true
-
-    # optional visibility relaxation (normally keep false for better protection)
-    checkViewCone: false
-    viewConeDegrees: 100
-
+    # material used to replace hidden block states directly in MAP_CHUNK payload
     replacementMaterial: STONE
+
     hiddenMaterials:
       - DIAMOND_ORE
       - DEEPSLATE_DIAMOND_ORE
